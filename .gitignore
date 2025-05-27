@@ -1,6 +1,6 @@
 # Environnement Virtuel
-env_app_pseudo/
-*.venv/
+env_assistant_finetunning/
+# Répertoire de l'environnement virtuel
 .env/
 
 # Fichiers Python compilés et caches
