@@ -1,0 +1,155 @@
+[paths]
+train = "train.spacy"
+dev = "dev.spacy"
+vectors = "fr_core_news_md"
+init_tok2vec = null
+
+[system]
+gpu_allocator = null
+seed = 0
+
+[nlp]
+lang = "fr"
+pipeline = ["tok2vec","ner"]
+batch_size = 1000
+disabled = []
+tokenizer = {"@tokenizers":"spacy.Tokenizer.v1"}
+# La section "vectors" ici est pour un composant "vectors" optionnel dans le pipeline, 
+# distinct de "paths.vectors". Si "fill-config" l'a ajouté, c'est souvent basé sur le modèle source.
+# Si elle n'était pas là, ce n'est pas grave pour le fine-tuning du NER/tok2vec.
+vectors = {"@vectors":"spacy.Vectors.v1"}
+
+
+[components]
+
+[components.tok2vec]
+factory = "tok2vec"
+# On retire "source = fr_core_news_md" d'ici.
+# L'option --base-model fr_core_news_md lors de "spacy init config"
+# a dû configurer ce composant pour utiliser les poids du modèle de base.
+# Si ce n'est pas le cas, la section [initialize.components.tok2vec] pourrait être utilisée.
+
+[components.tok2vec.model]
+@architectures = "spacy.HashEmbedCNN.v2" 
+# Doit être compatible avec fr_core_news_md
+pretrained_vectors = null
+ # Sera rempli par paths.vectors si include_static_vectors = true
+width = 96
+depth = 4
+embed_size = 2000
+window_size = 1
+maxout_pieces = 3
+subword_features = true
+# include_static_vectors = true # Vous pourriez ajouter ceci si vous voulez explicitement utiliser les vecteurs statiques
+
+[components.ner]
+factory = "ner"
+# On retire "source = fr_core_news_md" d'ici aussi.
+# Le --base-model devrait avoir configuré ce composant pour le fine-tuning.
+incorrect_spans_key = null
+moves = null
+scorer = {"@scorers":"spacy.ner_scorer.v1"}
+update_with_oracle_cut_size = 100
+
+[components.ner.model]
+@architectures = "spacy.TransitionBasedParser.v2"
+state_type = "ner"
+extra_state_tokens = false
+hidden_width = 64
+maxout_pieces = 2
+use_upper = true
+nO = null
+
+[components.ner.model.tok2vec]
+@architectures = "spacy.Tok2VecListener.v1"
+# width = ${components.tok2vec.model.encode.width} # On avait retiré ça, c'est bien.
+# La largeur doit être cohérente avec le tok2vec principal.
+# Si le tok2vec principal a une width de 96 (comme défini ci-dessus), le listener doit s'y adapter.
+# On peut définir explicitement la width ici si nécessaire, mais essayons sans d'abord.
+width = 96
+ # Essayons de la mettre explicitement pour correspondre au tok2vec.model.width
+upstream = "*"
+ # Écoute le composant tok2vec du pipeline.
+
+
+[corpora]
+[corpora.dev]
+@readers = "spacy.Corpus.v1"
+path = ${paths.dev}
+max_length = 0
+gold_preproc = false
+limit = 0
+augmenter = null
+
+[corpora.train]
+@readers = "spacy.Corpus.v1"
+path = ${paths.train}
+max_length = 0
+gold_preproc = false
+limit = 0
+augmenter = null
+
+[training]
+dev_corpus = "corpora.dev"
+train_corpus = "corpora.train"
+seed = ${system.seed}
+gpu_allocator = ${system.gpu_allocator}
+dropout = 0.1
+accumulate_gradient = 1
+patience = 1600
+max_epochs = 0
+ # Entraînement basé sur max_steps
+max_steps = 20000
+ # Réduire pour des tests initiaux (ex: 2000-5000)
+eval_frequency = 200
+frozen_components = []
+ # Important: vide pour fine-tuner tok2vec et ner
+annotating_components = []
+before_to_disk = null
+ # Peut être utilisé pour des callbacks personnalisés
+# before_update = null # (Commentaire: Il n'y a pas de before_update standard, peut-être une typo)
+
+[training.batcher]
+@batchers = "spacy.batch_by_words.v1"
+discard_oversize = false
+tolerance = 0.2
+# get_length = null # Normalement pas nécessaire de le définir explicitement
+
+[training.batcher.size]
+@schedules = "compounding.v1"
+start = 100
+stop = 1000
+compound = 1.001
+# t = 0.0 # Normalement pas nécessaire de le définir explicitement
+
+[training.logger]
+@loggers = "spacy.ConsoleLogger.v1"
+progress_bar = false
+
+[training.optimizer]
+@optimizers = "Adam.v1"
+beta1 = 0.9
+beta2 = 0.999
+L2_is_weight_decay = true
+L2 = 0.01
+grad_clip = 1.0
+use_averages = false
+eps = 0.00000001
+learn_rate = 0.001
+
+[training.score_weights]
+ents_f = 1.0
+# ents_p = 0.0 # Déjà par défaut
+# ents_r = 0.0 # Déjà par défaut
+# ents_per_type = null # Déjà par défaut
+
+[initialize]
+vectors = ${paths.vectors}
+# init_tok2vec = ${paths.init_tok2vec} # Laisser à null si on source le tok2vec ou qu'il s'initialise bien à partir des vecteurs
+# vocab_data = null
+# lookups = null
+# before_init = null
+# after_init = null
+
+# [initialize.components] # Normalement pas besoin si --base-model a bien fait son travail
+# [initialize.tokenizer]
